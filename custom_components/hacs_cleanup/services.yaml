@@ -1,0 +1,5 @@
+scan:
+  name: Scan starten
+  description: >
+    Durchsucht die HA-Speicherdateien nach verwaisten Einträgen von
+    entfernten HACS-Repositories und erstellt einen Bericht.
