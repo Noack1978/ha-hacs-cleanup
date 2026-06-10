@@ -7,5 +7,5 @@
   "integration_type": "system",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/Noack1978/ha-hacs-cleanup/issues",
-  "version": "1.0.0"
+  "version": "1.0.1"
 }
