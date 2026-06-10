@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import logging
 
+from homeassistant.components.persistent_notification import (
+    async_create as pn_create,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 
@@ -17,7 +20,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Integration einrichten und Service registrieren."""
 
     async def handle_scan(call: ServiceCall) -> None:
-        """Service-Handler: Scan ausführen und Ergebnis als Notification anzeigen."""
         storage_dir = hass.config.path(".storage")
         report_path = hass.config.path(REPORT_FILENAME)
 
@@ -27,7 +29,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             run_scan, storage_dir, report_path
         )
 
-        hass.components.persistent_notification.async_create(
+        pn_create(
+            hass,
             result["notification"],
             title="🔍 HACS Cleanup – Scan-Ergebnis",
             notification_id=NOTIFICATION_ID,
