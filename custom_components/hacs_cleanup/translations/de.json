@@ -1,0 +1,22 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "HACS Cleanup einrichten",
+        "description": "Scannt verwaiste Entitäten, Geräte und HACS-Einträge nach dem Entfernen von Repos. Keine weitere Konfiguration nötig."
+      }
+    },
+    "abort": {
+      "already_configured": "HACS Cleanup ist bereits eingerichtet."
+    },
+    "create_entry": {
+      "default": "HACS Cleanup erfolgreich eingerichtet."
+    }
+  },
+  "services": {
+    "scan": {
+      "name": "Scan starten",
+      "description": "Scannt verwaiste Entitäten, Geräte und HACS-Einträge. Ergebnis erscheint als HA-Benachrichtigung und wird in /config/hacs_cleanup_report.txt gespeichert."
+    }
+  }
+}
