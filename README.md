@@ -58,3 +58,19 @@ show_state: false
 ## Hinweis
 
 Das Skript scannt nur — es verändert keine Dateien. Gefundene Einträge müssen manuell entfernt werden (Anleitung steht im Vollbericht).
+
+## Hinweise zur HA-Kompatibilität
+
+### HA 2026.8+ – Device-Registry-Umstellung
+Ab HA 2026.8 nutzt die Device-Registry intern `config_entry_id` statt `config_entries` (Liste).
+Die Integration unterstützt beide Schemata automatisch per Fallback.
+
+### HA 2026.9+ – Child Devices
+Ab HA 2026.9 gibt es Child Devices mit `parent_device_id`. Diese werden beim Scan
+explizit übersprungen, da sie über ihr Parent-Device verwaltet werden.
+
+### HA 2026.9+ – Persistent Notification
+Ab HA 2026.9 feuert eine Persistent Notification bei bestehender `notification_id`
+das Event `update_type: updated` statt `added` (nur beim allerersten Erstellen `added`).
+Falls du eine Automation auf das Notification-Event triggerst, ergänze dort `updated`.
+
