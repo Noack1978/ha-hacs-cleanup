@@ -131,10 +131,17 @@ def run_scan(storage_dir_str: str, report_path_str: str) -> dict:
     w()
 
     # ── 2. Verwaiste Geräte ────────────────────────────────────────────────────
+    def _device_entry_ids(d: dict) -> list:
+        """Liefert Config-Entry-IDs – unterstützt neues (config_entry_id) und altes (config_entries) Schema."""
+        if d.get("config_entry_id"):
+            return [d["config_entry_id"]]
+        return d.get("config_entries", [])
+
     orphaned_devices = [
         d for d in devices
-        if d.get("config_entries")
-        and not set(d["config_entries"]).intersection(valid_entry_ids)
+        if not d.get("parent_device_id")  # Child Devices überspringen
+        and _device_entry_ids(d)
+        and not set(_device_entry_ids(d)).intersection(valid_entry_ids)
     ]
     findings += len(orphaned_devices)
 
@@ -143,7 +150,7 @@ def run_scan(storage_dir_str: str, report_path_str: str) -> dict:
         for d in orphaned_devices:
             dev_id  = d.get("id", "?")
             name    = d.get("name_by_user") or d.get("name") or "?"
-            ces     = d.get("config_entries", [])
+            ces     = _device_entry_ids(d)
             line_no = _find_line(device_lines, f'"id": "{dev_id}"')
             w(f"  Datei  : {DEVICE_FILE}")
             w(f"  Zeile  : {line_no if line_no > 0 else 'nicht ermittelbar'}")
@@ -158,7 +165,9 @@ def run_scan(storage_dir_str: str, report_path_str: str) -> dict:
     orphaned_hacs_devices: list[tuple] = []
     if hacs_entry_id and hacs_repo_ids:
         for d in devices:
-            if hacs_entry_id not in d.get("config_entries", []):
+            if d.get("parent_device_id"):
+                continue  # Child Device – wird über Parent verwaltet
+            if hacs_entry_id not in _device_entry_ids(d):
                 continue
             for ident in d.get("identifiers", []):
                 if (isinstance(ident, list) and len(ident) == 2
