@@ -15,6 +15,20 @@ Scannt Home Assistant nach verwaisten Einträgen, die nach dem Entfernen von HAC
 
 Für jeden Fund wird die genaue **Datei** und **Zeilennummer** im Vollbericht angegeben.
 
+## Ungenutzte Karten finden (`hacs_cleanup.scan_unused_cards`)
+
+Vergleicht alle installierten HACS-Plugin-Repos (Lovelace Custom Cards) mit den
+Kartentypen, die tatsächlich in deinen Dashboards (Storage-Modus) verwendet werden,
+und listet vermutlich ungenutzte Repos auf – als Grundlage, um sie in HACS zu deinstallieren.
+
+**Wichtig:** Der Abgleich erfolgt heuristisch über Datei-/Repo-Namen (z. B.
+`mini-graph-card.js` → `custom:mini-graph-card`), da der tatsächliche
+Custom-Element-Name nur im JS-Code selbst definiert ist und aus den
+HA-Speicherdateien nicht auslesbar ist. Vor dem Entfernen eines Repos daher
+immer den Fund im Vollbericht manuell verifizieren. Gescannt werden nur
+Storage-Modus-Dashboards (`.storage/lovelace*`) – reine YAML-Dashboards werden
+aktuell nicht erfasst.
+
 ## Installation
 
 ### Via HACS (empfohlen)
@@ -33,9 +47,9 @@ Für jeden Fund wird die genaue **Datei** und **Zeilennummer** im Vollbericht an
 
 ### Service aufrufen
 
-Entwicklerwerkzeuge → Aktionen → `hacs_cleanup.scan` → Aktion ausführen
+Entwicklerwerkzeuge → Aktionen → `hacs_cleanup.scan` bzw. `hacs_cleanup.scan_unused_cards` → Aktion ausführen
 
-### Dashboard-Button
+### Dashboard-Buttons
 
 ```yaml
 show_name: true
@@ -50,10 +64,24 @@ tap_action:
 show_state: false
 ```
 
+```yaml
+show_name: true
+show_icon: true
+type: button
+name: HACS Cleanup – Ungenutzte Karten
+icon: mdi:cards-outline
+tap_action:
+  action: perform-action
+  perform_action: hacs_cleanup.scan_unused_cards
+  target: {}
+show_state: false
+```
+
 ### Ergebnis
 
 - **HA-Benachrichtigung** mit Kurzübersicht erscheint direkt
-- **Vollbericht** unter `/config/hacs_cleanup_report.txt` mit Datei und Zeilennummer je Fund
+- **Vollbericht** von `hacs_cleanup.scan` unter `/config/hacs_cleanup_report.txt`
+- **Vollbericht** von `hacs_cleanup.scan_unused_cards` unter `/config/hacs_cleanup_unused_cards_report.txt`
 
 ## Hinweis
 
