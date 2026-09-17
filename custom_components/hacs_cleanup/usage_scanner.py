@@ -5,18 +5,27 @@ Vergleicht die in hacs.repositories installierten Plugin-Repos (Kategorie
 "plugin") mit den tatsächlich in den Lovelace-Dashboards (Storage-Modus)
 verwendeten `custom:`-Kartentypen.
 
-Der Abgleich erfolgt heuristisch über Datei-/Repo-Namen, da der tatsächliche
-Custom-Element-Name nur im JS-Code selbst (customElements.define(...))
-definiert ist und aus den HA-Storage-Dateien nicht auslesbar ist.
+Primäre Erkennung: Die lokal installierte(n) JS-Datei(en) unter
+/config/www/community/<repo>/ werden gelesen und nach
+`customElements.define("name", ...)` durchsucht. Das ist der exakte Name,
+unter dem eine Karte im Dashboard als `custom:name` ansprechbar ist – jede
+gültige Lovelace-Karte muss sich so registrieren, sonst würde HA sie gar
+nicht laden.
+
+Fallback (nur falls die JS-Datei nicht gefunden/lesbar ist): Namens-Heuristik
+über Datei-/Repo-Namen. In diesem Fall ist ein Fund unsicherer und wird im
+Bericht entsprechend gekennzeichnet.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 
 CUSTOM_PREFIX = "custom:"
+DEFINE_RE = re.compile(r"customElements\.define\(\s*['\"`]([a-zA-Z0-9_-]+)['\"`]")
 
 
 def _load(path: Path) -> dict:
@@ -72,8 +81,9 @@ def _get_plugin_repos(storage_dir: Path) -> tuple[list[dict], str]:
     return plugins, f"{path.name}: {len(repos)} Repos im Katalog, {len(plugins)} davon installiert (Kategorie plugin)"
 
 
-def _candidates(repo: dict) -> set[str]:
-    """Mögliche Custom-Element-Namen für ein Plugin-Repo (Heuristik)."""
+def _heuristic_candidates(repo: dict) -> set[str]:
+    """Mögliche Custom-Element-Namen für ein Plugin-Repo – nur Fallback, falls
+    die installierte JS-Datei nicht gefunden werden konnte."""
     names: set[str] = set()
 
     file_name = repo.get("file_name") or ""
@@ -93,6 +103,38 @@ def _candidates(repo: dict) -> set[str]:
                 names.add(repo_short[len(prefix) :])
 
     return {n for n in names if n}
+
+
+def _defined_elements(www_community_dir: Path, repo: dict) -> set[str]:
+    """Liest die lokal installierte(n) JS-Datei(en) eines Plugin-Repos und
+    extrahiert die per customElements.define() registrierten Namen – die
+    exakte, verlässliche Quelle für den nutzbaren 'custom:<name>'-Typ."""
+    full_name = repo.get("full_name") or ""
+    repo_short = full_name.split("/")[-1] if "/" in full_name else full_name
+    if not repo_short:
+        return set()
+
+    repo_dir = www_community_dir / repo_short
+    if not repo_dir.is_dir():
+        return set()
+
+    js_files: list[Path] = []
+    file_name = repo.get("file_name")
+    if file_name:
+        candidate = repo_dir / file_name
+        if candidate.is_file():
+            js_files.append(candidate)
+    if not js_files:
+        js_files = sorted(p for p in repo_dir.glob("*.js"))
+
+    defined: set[str] = set()
+    for js_file in js_files:
+        try:
+            content = js_file.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        defined |= {m.lower() for m in DEFINE_RE.findall(content)}
+    return defined
 
 
 def _collect_custom_types(node) -> set[str]:
@@ -144,6 +186,7 @@ def run_scan_unused_cards(storage_dir_str: str, report_path_str: str) -> dict:
     """
     storage_dir = Path(storage_dir_str)
     report_path = Path(report_path_str)
+    www_community_dir = storage_dir.parent / "www" / "community"
 
     plugins, plugin_status = _get_plugin_repos(storage_dir)
     registered = _collect_registered_resources(storage_dir)
@@ -173,26 +216,47 @@ def run_scan_unused_cards(storage_dir_str: str, report_path_str: str) -> dict:
     w(f"Gescannte Storage-Dateien: {len(scanned_files)} ({', '.join(scanned_files) or '-'})")
     w(f"Gefundene custom:-Kartentypen in Dashboards: {len(used_types)}")
     w()
-    w("HINWEIS: Der Abgleich erfolgt heuristisch über Datei-/Repo-Namen, da der")
-    w("tatsächliche Custom-Element-Name nur im JS-Code selbst definiert ist.")
+    w("HINWEIS: Primär wird die installierte JS-Datei unter www/community/<repo>/")
+    w("nach customElements.define(...) durchsucht – das ist der exakte, tatsächlich")
+    w("nutzbare Kartenname. Nur falls diese Datei nicht gefunden wird, greift eine")
+    w("unsichere Namens-Heuristik als Fallback (im Bericht als solche markiert).")
     w("Nur YAML-Dashboards werden nicht gescannt (nur Storage-Modus/.storage/lovelace*).")
-    w("Vor dem Entfernen eines Repos bitte den Fund manuell verifizieren.")
     w()
 
     used_repos: list[dict] = []
     unused_repos: list[dict] = []
+    js_based = 0
+    heuristic_based = 0
 
     for repo in plugins:
-        candidates = _candidates(repo)
+        defined = _defined_elements(www_community_dir, repo)
+        if defined:
+            candidates = defined
+            source = "JS-Analyse"
+            js_based += 1
+        else:
+            candidates = _heuristic_candidates(repo)
+            source = "Namens-Heuristik (JS-Datei nicht gefunden)"
+            heuristic_based += 1
+
         is_used = bool(candidates & used_types)
         is_registered = bool(candidates & registered)
-        entry = {**repo, "candidates": sorted(candidates), "used": is_used, "registered": is_registered}
+        entry = {
+            **repo,
+            "candidates": sorted(candidates),
+            "source": source,
+            "used": is_used,
+            "registered": is_registered,
+        }
         (used_repos if is_used else unused_repos).append(entry)
+
+    w(f"Erkennung: {js_based} über JS-Analyse (exakt), {heuristic_based} über Namens-Heuristik (Fallback)")
+    w()
 
     w(f"--- Vermutlich GENUTZT ({len(used_repos)}) ---")
     if used_repos:
         for r in used_repos:
-            w(f"  {r['name']}  [{r['full_name']}]")
+            w(f"  {r['name']}  [{r['full_name']}]  ({r['source']})")
             w(f"    Erkannt über: {', '.join(r['candidates']) or '-'}")
         w()
     else:
@@ -207,7 +271,7 @@ def run_scan_unused_cards(storage_dir_str: str, report_path_str: str) -> dict:
                 if r["registered"]
                 else "auch keine Lovelace-Ressource dafür registriert"
             )
-            w(f"  {r['name']}  [{r['full_name']}]  repo_id={r['id']}")
+            w(f"  {r['name']}  [{r['full_name']}]  repo_id={r['id']}  ({r['source']})")
             w(f"    Gesuchte Namen: {', '.join(r['candidates']) or '-'}  ({reg_hint})")
         w()
     else:
