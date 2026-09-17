@@ -17,6 +17,10 @@
     "scan": {
       "name": "Scan starten",
       "description": "Scannt verwaiste Entitäten, Geräte und HACS-Einträge. Ergebnis erscheint als HA-Benachrichtigung und wird in /config/hacs_cleanup_report.txt gespeichert."
+    },
+    "scan_unused_cards": {
+      "name": "Ungenutzte Karten scannen",
+      "description": "Vergleicht installierte HACS-Plugin-Repos (Lovelace Custom Cards) mit den tatsächlich in den Dashboards verwendeten Kartentypen. Ergebnis erscheint als HA-Benachrichtigung und wird in /config/hacs_cleanup_unused_cards_report.txt gespeichert."
     }
   }
 }
