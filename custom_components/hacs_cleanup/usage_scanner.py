@@ -29,8 +29,23 @@ def _load(path: Path) -> dict:
         return {}
 
 
+def _is_installed(repo: dict) -> bool:
+    """Prüft, ob ein Repo tatsächlich installiert ist (nicht nur im Katalog bekannt)."""
+    if repo.get("installed") is True:
+        return True
+    # Ältere/alternative HACS-Schemata verwenden andere Feldnamen
+    if repo.get("installed_version") or repo.get("version_installed"):
+        return True
+    return False
+
+
 def _get_plugin_repos(storage_dir: Path) -> tuple[list[dict], str]:
-    """Liest alle Plugin-Repos (Lovelace Custom Cards) aus hacs.repositories."""
+    """Liest alle INSTALLIERTEN Plugin-Repos (Lovelace Custom Cards) aus hacs.repositories.
+
+    hacs.repositories enthält bei aktuellem HACS den kompletten bekannten Katalog
+    (mehrere tausend Einträge), nicht nur installierte Repos. Für den Vergleich
+    "installiert vs. genutzt" muss daher zusätzlich auf "installed" gefiltert werden.
+    """
     path = storage_dir / "hacs.repositories"
     data = _load(path)
     if not data:
@@ -44,6 +59,8 @@ def _get_plugin_repos(storage_dir: Path) -> tuple[list[dict], str]:
     for repo_id, repo in repos.items():
         if not isinstance(repo, dict) or repo.get("category") != "plugin":
             continue
+        if not _is_installed(repo):
+            continue
         plugins.append(
             {
                 "id": str(repo_id),
@@ -52,7 +69,7 @@ def _get_plugin_repos(storage_dir: Path) -> tuple[list[dict], str]:
                 "file_name": repo.get("file_name"),
             }
         )
-    return plugins, f"{path.name}: {len(plugins)} Plugin-Repos gefunden"
+    return plugins, f"{path.name}: {len(repos)} Repos im Katalog, {len(plugins)} davon installiert (Kategorie plugin)"
 
 
 def _candidates(repo: dict) -> set[str]:
@@ -152,7 +169,7 @@ def run_scan_unused_cards(storage_dir_str: str, report_path_str: str) -> dict:
 
     w(f"=== HACS Cleanup – Ungenutzte Karten-Scan – {datetime.now().strftime('%d.%m.%Y %H:%M:%S')} ===")
     w()
-    w(f"Plugin-Repos (Lovelace Custom Cards): {len(plugins)}  ({plugin_status})")
+    w(f"Installierte Plugin-Repos (Lovelace Custom Cards): {len(plugins)}  ({plugin_status})")
     w(f"Gescannte Storage-Dateien: {len(scanned_files)} ({', '.join(scanned_files) or '-'})")
     w(f"Gefundene custom:-Kartentypen in Dashboards: {len(used_types)}")
     w()

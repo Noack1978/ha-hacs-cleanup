@@ -34,9 +34,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         _LOGGER.debug("HACS Cleanup Scan gestartet")
 
-        result = await hass.async_add_executor_job(
-            run_scan, storage_dir, report_path
-        )
+        try:
+            result = await hass.async_add_executor_job(
+                run_scan, storage_dir, report_path
+            )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.exception("HACS Cleanup Scan fehlgeschlagen")
+            pn_create(
+                hass,
+                f"Scan fehlgeschlagen: {err}\n\nDetails im HA-Log (Einstellungen → System → Logs).",
+                title="⚠️ HACS Cleanup – Fehler",
+                notification_id=NOTIFICATION_ID,
+            )
+            return
 
         pn_create(
             hass,
@@ -60,9 +70,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         _LOGGER.debug("HACS Cleanup Ungenutzte-Karten-Scan gestartet")
 
-        result = await hass.async_add_executor_job(
-            run_scan_unused_cards, storage_dir, report_path
-        )
+        try:
+            result = await hass.async_add_executor_job(
+                run_scan_unused_cards, storage_dir, report_path
+            )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.exception("HACS Cleanup Ungenutzte-Karten-Scan fehlgeschlagen")
+            pn_create(
+                hass,
+                f"Scan fehlgeschlagen: {err}\n\nDetails im HA-Log (Einstellungen → System → Logs).",
+                title="⚠️ HACS Cleanup – Fehler",
+                notification_id=NOTIFICATION_ID_UNUSED_CARDS,
+            )
+            return
 
         pn_create(
             hass,
