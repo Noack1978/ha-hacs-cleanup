@@ -21,11 +21,13 @@ Vergleicht alle installierten HACS-Plugin-Repos (Lovelace Custom Cards) mit den
 Kartentypen, die tatsächlich in deinen Dashboards (Storage-Modus) verwendet werden,
 und listet vermutlich ungenutzte Repos auf – als Grundlage, um sie in HACS zu deinstallieren.
 
-**Wichtig:** Der Abgleich erfolgt heuristisch über Datei-/Repo-Namen (z. B.
-`mini-graph-card.js` → `custom:mini-graph-card`), da der tatsächliche
-Custom-Element-Name nur im JS-Code selbst definiert ist und aus den
-HA-Speicherdateien nicht auslesbar ist. Vor dem Entfernen eines Repos daher
-immer den Fund im Vollbericht manuell verifizieren. Gescannt werden nur
+**Erkennung:** Primär wird die lokal installierte JS-Datei unter
+`/config/www/community/<repo>/` nach `customElements.define("name", ...)`
+durchsucht – das ist der exakte Name, unter dem die Karte als `custom:name`
+im Dashboard nutzbar ist, da jede gültige Lovelace-Karte sich zwingend so
+registrieren muss. Nur falls diese Datei nicht gefunden/lesbar ist, greift
+eine unsichere Namens-Heuristik als Fallback (im Bericht als solche
+gekennzeichnet – dort dann manuell verifizieren). Gescannt werden nur
 Storage-Modus-Dashboards (`.storage/lovelace*`) – reine YAML-Dashboards werden
 aktuell nicht erfasst.
 
