@@ -230,12 +230,22 @@ def run_scan_unused_cards(storage_dir_str: str, report_path_str: str) -> dict:
 
     for repo in plugins:
         defined = _defined_elements(www_community_dir, repo)
-        if defined:
-            candidates = defined
+        heuristic = _heuristic_candidates(repo)
+        # Immer beide Quellen kombinieren: die JS-Analyse kann ein Hilfselement
+        # (z.B. "action-handler-<name>") statt des Haupt-Kartennamens finden,
+        # wenn dieser über eine JS-Variable statt eines String-Literals an
+        # customElements.define() übergeben wird (vom Regex nicht erfassbar).
+        # Die Namens-Heuristik dient dann als zusätzliches Sicherheitsnetz und
+        # erzeugt beim Abgleich keine falschen Treffer, da sie stets
+        # repo-spezifisch bleibt.
+        candidates = defined | heuristic
+        if defined and (heuristic - defined):
+            source = "JS-Analyse + Heuristik"
+            js_based += 1
+        elif defined:
             source = "JS-Analyse"
             js_based += 1
         else:
-            candidates = _heuristic_candidates(repo)
             source = "Namens-Heuristik (JS-Datei nicht gefunden)"
             heuristic_based += 1
 
