@@ -17,7 +17,7 @@
     "step": {
       "init": {
         "title": "HACS Cleanup – Ausschlüsse",
-        "description": "Wähle Repos aus, die beim Ungenutzte-Karten-Scan immer als genutzt gelten sollen (z.B. Hilfs-Repos ohne eigene Karte wie card-mod).",
+        "description": "Wähle Repos aus, die bei den Ungenutzt-Scans (Karten und Integrationen) immer als genutzt gelten sollen (z.B. Hilfs-Repos ohne eigene Karte wie card-mod). Karten sind mit 🧩, Integrationen mit ⚙️ markiert.",
         "data": {
           "excluded_repos": "Ausgeschlossene Repos"
         }
@@ -32,6 +32,10 @@
     "scan_unused_cards": {
       "name": "Ungenutzte Karten scannen",
       "description": "Vergleicht installierte HACS-Plugin-Repos (Lovelace Custom Cards) mit den tatsächlich in den Dashboards verwendeten Kartentypen. Manuell ausgeschlossene Repos (siehe Integrationskonfiguration) werden übersprungen. Ergebnis erscheint als HA-Benachrichtigung und wird in /config/hacs_cleanup_unused_cards_report.txt gespeichert."
+    },
+    "scan_unused_integrations": {
+      "name": "Ungenutzte Integrationen scannen",
+      "description": "Vergleicht installierte HACS-Integration-Repos (custom_components) mit tatsächlich eingerichteten Integrationen (Config Entries bzw. YAML-Referenzen). Manuell ausgeschlossene Repos (siehe Integrationskonfiguration) werden übersprungen. Ergebnis erscheint als HA-Benachrichtigung und wird in /config/hacs_cleanup_unused_integrations_report.txt gespeichert."
     }
   }
 }
