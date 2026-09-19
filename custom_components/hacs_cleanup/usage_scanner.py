@@ -10,7 +10,12 @@ Primäre Erkennung: Die lokal installierte(n) JS-Datei(en) unter
 `customElements.define("name", ...)` durchsucht. Das ist der exakte Name,
 unter dem eine Karte im Dashboard als `custom:name` ansprechbar ist – jede
 gültige Lovelace-Karte muss sich so registrieren, sonst würde HA sie gar
-nicht laden.
+nicht laden. Zusätzlich wird das bei kompilierten Decorators (z.B. Lits
+@customElement("name")) übliche Muster erkannt, bei dem der Name nicht
+direkt im define()-Aufruf steht, sondern als String-Literal an eine
+umschließende Wrapper-Funktion übergeben wird – dies wird für jedes
+Vorkommen in der Datei geprüft, sodass auch Repos mit mehreren Karten in
+einer Bündel-Datei (z.B. lovelace-mushroom) korrekt erfasst werden.
 
 Fallback (nur falls die JS-Datei nicht gefunden/lesbar ist): Namens-Heuristik
 über Datei-/Repo-Namen. In diesem Fall ist ein Fund unsicherer und wird im
@@ -26,6 +31,16 @@ from pathlib import Path
 
 CUSTOM_PREFIX = "custom:"
 DEFINE_RE = re.compile(r"customElements\.define\(\s*['\"`]([a-zA-Z0-9_-]+)['\"`]")
+
+# Erkennt customElements.define()-Aufrufe MIT Variablen statt eines direkten
+# String-Literals (z.B. "customElements.define(e,t)") – typisch für von
+# TypeScript/Babel kompilierte Decorators (z.B. Lits @customElement("name")).
+# Der eigentliche Name steckt dann als String-Literal etwas weiter im Code,
+# als alleiniges Argument einer umschließenden Wrapper-Funktion, die den
+# define()-Aufruf intern durchführt – erkennbar am Muster ")('name')".
+VARIABLE_DEFINE_RE = re.compile(r"customElements\.define\(\s*(?!['\"`])")
+DECORATOR_ARG_RE = re.compile(r"\)\(\s*['\"`]([a-z0-9]+(?:-[a-z0-9]+)+)['\"`]\s*\)")
+DECORATOR_SEARCH_WINDOW = 800  # Zeichen nach dem define()-Aufruf
 
 
 def _load(path: Path) -> dict:
@@ -149,7 +164,29 @@ def _defined_elements(www_community_dir: Path, repo: dict) -> set[str]:
         except OSError:
             continue
         defined |= {m.lower() for m in DEFINE_RE.findall(content)}
+        defined |= _decorator_defined_elements(content)
     return defined
+
+
+def _decorator_defined_elements(content: str) -> set[str]:
+    """Erkennt Custom-Element-Namen, die über kompilierte Decorator-Syntax
+    registriert werden (typisch für Lits @customElement("name") nach dem
+    TypeScript-/Babel-Build) – der Name wird dabei nicht direkt an
+    customElements.define() übergeben (das erfasst DEFINE_RE bereits), sondern
+    an eine umschließende Wrapper-Funktion.
+
+    Wird für JEDES Vorkommen im Datei-Inhalt ausgewertet, nicht nur einmal –
+    wichtig für Repos mit mehreren Karten in einer Bündel-Datei (z.B.
+    lovelace-mushroom mit mushroom-entity-card, mushroom-title-card, ...),
+    deren Namen nicht zum Repo-Namen passen und die Namens-Heuristik daher
+    nicht erfassen kann."""
+    found: set[str] = set()
+    for match in VARIABLE_DEFINE_RE.finditer(content):
+        window = content[match.end() : match.end() + DECORATOR_SEARCH_WINDOW]
+        arg_match = DECORATOR_ARG_RE.search(window)
+        if arg_match:
+            found.add(arg_match.group(1).lower())
+    return found
 
 
 def _collect_custom_types(node) -> set[str]:
