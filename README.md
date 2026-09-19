@@ -4,7 +4,11 @@
 
 Scannt Home Assistant nach verwaisten Einträgen, die nach dem Entfernen von HACS-Repositories zurückbleiben.
 
-## Was wird erkannt?
+## Verwaiste Einträge finden (`hacs_cleanup.scan`)
+
+Durchsucht die HA-Speicherdateien nach Resten, die nach dem Entfernen von
+HACS-Repositories zurückbleiben (Entitäten, Geräte, HACS-Einträge), und
+erstellt einen Bericht.
 
 | Abschnitt | Was wird gesucht |
 |-----------|-----------------|
