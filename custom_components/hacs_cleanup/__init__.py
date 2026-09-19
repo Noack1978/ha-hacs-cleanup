@@ -11,6 +11,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 
 from .const import (
+    CONF_EXCLUDED_REPOS,
     DOMAIN,
     NOTIFICATION_ID,
     NOTIFICATION_ID_UNUSED_CARDS,
@@ -68,11 +69,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         storage_dir = hass.config.path(".storage")
         report_path = hass.config.path(REPORT_FILENAME_UNUSED_CARDS)
 
-        _LOGGER.debug("HACS Cleanup Ungenutzte-Karten-Scan gestartet")
+        excluded_ids = entry.options.get(CONF_EXCLUDED_REPOS, [])
+
+        _LOGGER.debug(
+            "HACS Cleanup Ungenutzte-Karten-Scan gestartet (%d Repos ausgeschlossen)",
+            len(excluded_ids),
+        )
 
         try:
             result = await hass.async_add_executor_job(
-                run_scan_unused_cards, storage_dir, report_path
+                run_scan_unused_cards, storage_dir, report_path, excluded_ids
             )
         except Exception as err:  # noqa: BLE001
             _LOGGER.exception("HACS Cleanup Ungenutzte-Karten-Scan fehlgeschlagen")

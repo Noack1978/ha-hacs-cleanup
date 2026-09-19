@@ -81,6 +81,21 @@ def _get_plugin_repos(storage_dir: Path) -> tuple[list[dict], str]:
     return plugins, f"{path.name}: {len(repos)} Repos im Katalog, {len(plugins)} davon installiert (Kategorie plugin)"
 
 
+def get_installed_plugin_repos(storage_dir_str: str) -> list[dict]:
+    """Öffentlicher Zugriff auf die installierten Plugin-Repos, z.B. für den
+    Options-Flow (Repo-Auswahl für den Ausschluss). Wird im Executor
+    ausgeführt (kein async).
+
+    Args:
+        storage_dir_str: Pfad zu .storage/ (z.B. /config/.storage)
+
+    Returns:
+        Liste von {"id", "full_name", "name", "file_name"}, sortiert nach Name.
+    """
+    plugins, _ = _get_plugin_repos(Path(storage_dir_str))
+    return sorted(plugins, key=lambda p: p["name"].lower())
+
+
 def _heuristic_candidates(repo: dict) -> set[str]:
     """Mögliche Custom-Element-Namen für ein Plugin-Repo – nur Fallback, falls
     die installierte JS-Datei nicht gefunden werden konnte."""
@@ -170,7 +185,11 @@ def _collect_registered_resources(storage_dir: Path) -> set[str]:
     return names
 
 
-def run_scan_unused_cards(storage_dir_str: str, report_path_str: str) -> dict:
+def run_scan_unused_cards(
+    storage_dir_str: str,
+    report_path_str: str,
+    excluded_ids: list[str] | None = None,
+) -> dict:
     """
     Vergleicht installierte HACS-Plugin-Repos mit tatsächlich in den
     Dashboards verwendeten Custom-Card-Typen.
@@ -180,6 +199,9 @@ def run_scan_unused_cards(storage_dir_str: str, report_path_str: str) -> dict:
     Args:
         storage_dir_str: Pfad zu .storage/ (z.B. /config/.storage)
         report_path_str: Pfad für den Vollbericht
+        excluded_ids: Repo-IDs, die manuell von der Prüfung ausgeschlossen
+            werden (z.B. Hilfs-Repos wie card-mod, die keine eigene Karte
+            sind und daher nie als 'genutzt' erkannt werden können)
 
     Returns:
         {"notification": str, "report": str, "used_count": int, "unused_count": int}
@@ -187,8 +209,11 @@ def run_scan_unused_cards(storage_dir_str: str, report_path_str: str) -> dict:
     storage_dir = Path(storage_dir_str)
     report_path = Path(report_path_str)
     www_community_dir = storage_dir.parent / "www" / "community"
+    excluded_id_set = set(excluded_ids or [])
 
-    plugins, plugin_status = _get_plugin_repos(storage_dir)
+    all_plugins, plugin_status = _get_plugin_repos(storage_dir)
+    excluded_repos = [p for p in all_plugins if p["id"] in excluded_id_set]
+    plugins = [p for p in all_plugins if p["id"] not in excluded_id_set]
     registered = _collect_registered_resources(storage_dir)
 
     used_types: set[str] = set()
@@ -212,7 +237,9 @@ def run_scan_unused_cards(storage_dir_str: str, report_path_str: str) -> dict:
 
     w(f"=== HACS Cleanup – Ungenutzte Karten-Scan – {datetime.now().strftime('%d.%m.%Y %H:%M:%S')} ===")
     w()
-    w(f"Installierte Plugin-Repos (Lovelace Custom Cards): {len(plugins)}  ({plugin_status})")
+    w(f"Installierte Plugin-Repos (Lovelace Custom Cards): {len(all_plugins)}  ({plugin_status})")
+    if excluded_repos:
+        w(f"Davon manuell ausgeschlossen: {len(excluded_repos)} (siehe unten) – geprüft werden {len(plugins)}")
     w(f"Gescannte Storage-Dateien: {len(scanned_files)} ({', '.join(scanned_files) or '-'})")
     w(f"Gefundene custom:-Kartentypen in Dashboards: {len(used_types)}")
     w()
@@ -288,9 +315,19 @@ def run_scan_unused_cards(storage_dir_str: str, report_path_str: str) -> dict:
         w("  Keine – alle installierten Karten scheinen genutzt zu werden.")
         w()
 
+    if excluded_repos:
+        w(f"--- Manuell ausgeschlossen ({len(excluded_repos)}) ---")
+        w("Diese Repos wurden in der Integrationskonfiguration ausgeschlossen")
+        w("(z.B. Hilfs-Repos ohne eigene Karte) und nicht geprüft.")
+        for r in sorted(excluded_repos, key=lambda p: p["name"].lower()):
+            w(f"  {r['name']}  [{r['full_name']}]")
+        w()
+
     w("--- Zusammenfassung ---")
-    w(f"Genutzt   : {len(used_repos)}")
-    w(f"Ungenutzt : {len(unused_repos)}")
+    w(f"Genutzt      : {len(used_repos)}")
+    w(f"Ungenutzt    : {len(unused_repos)}")
+    if excluded_repos:
+        w(f"Ausgeschlossen: {len(excluded_repos)}")
 
     report_text = "\n".join(lines_out)
 
@@ -300,7 +337,7 @@ def run_scan_unused_cards(storage_dir_str: str, report_path_str: str) -> dict:
         pass
 
     notif_lines = [
-        f"Plugin-Repos gesamt : {len(plugins)}",
+        f"Geprüfte Plugin-Repos: {len(plugins)}",
         f"Vermutlich ungenutzt: {len(unused_repos)}",
     ]
     if unused_repos:
