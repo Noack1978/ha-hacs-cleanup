@@ -31,6 +31,15 @@ gekennzeichnet – dort dann manuell verifizieren). Gescannt werden nur
 Storage-Modus-Dashboards (`.storage/lovelace*`) – reine YAML-Dashboards werden
 aktuell nicht erfasst.
 
+**Repos ausschließen:** Manche installierten Repos sind keine eigene Karte
+(z.B. Hilfs-Repos wie `card-mod`), werden dadurch nie als "genutzt" erkannt
+und würden fälschlich als ungenutzt gelistet. Solche Repos lassen sich in
+der Integrationskonfiguration ausschließen: Einstellungen → Geräte &
+Dienste → **HACS Cleanup** → **Konfigurieren** → Repos per Mehrfachauswahl
+hinzufügen (wie bei einer Entitäten-Auswahl). Ausgeschlossene Repos werden
+beim Scan übersprungen und im Bericht im eigenen Abschnitt "Manuell
+ausgeschlossen" aufgeführt.
+
 ## Installation
 
 ### Via HACS (empfohlen)
