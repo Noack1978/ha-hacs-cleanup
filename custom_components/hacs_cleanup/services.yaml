@@ -10,3 +10,11 @@ scan_unused_cards:
     Vergleicht installierte HACS-Plugin-Repos (Lovelace Custom Cards) mit
     den tatsächlich in den Dashboards verwendeten Kartentypen und erstellt
     einen Bericht über vermutlich ungenutzte Repos.
+
+scan_unused_integrations:
+  name: Ungenutzte Integrationen scannen
+  description: >
+    Vergleicht installierte HACS-Integration-Repos (custom_components) mit
+    tatsächlich eingerichteten Integrationen (Config Entries bzw.
+    YAML-Referenzen) und erstellt einen Bericht über vermutlich ungenutzte
+    Repos.

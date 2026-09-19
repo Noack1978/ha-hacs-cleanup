@@ -15,11 +15,15 @@ from .const import (
     DOMAIN,
     NOTIFICATION_ID,
     NOTIFICATION_ID_UNUSED_CARDS,
+    NOTIFICATION_ID_UNUSED_INTEGRATIONS,
     REPORT_FILENAME,
     REPORT_FILENAME_UNUSED_CARDS,
+    REPORT_FILENAME_UNUSED_INTEGRATIONS,
     SERVICE_SCAN,
     SERVICE_SCAN_UNUSED_CARDS,
+    SERVICE_SCAN_UNUSED_INTEGRATIONS,
 )
+from .integration_scanner import run_scan_unused_integrations
 from .scanner import run_scan
 from .usage_scanner import run_scan_unused_cards
 
@@ -106,13 +110,59 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         else:
             _LOGGER.info("HACS Cleanup: Alle installierten Karten scheinen genutzt zu werden.")
 
+    async def handle_scan_unused_integrations(call: ServiceCall) -> None:
+        storage_dir = hass.config.path(".storage")
+        report_path = hass.config.path(REPORT_FILENAME_UNUSED_INTEGRATIONS)
+
+        excluded_ids = entry.options.get(CONF_EXCLUDED_REPOS, [])
+
+        _LOGGER.debug(
+            "HACS Cleanup Ungenutzte-Integrationen-Scan gestartet (%d Repos ausgeschlossen)",
+            len(excluded_ids),
+        )
+
+        try:
+            result = await hass.async_add_executor_job(
+                run_scan_unused_integrations, storage_dir, report_path, excluded_ids
+            )
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.exception("HACS Cleanup Ungenutzte-Integrationen-Scan fehlgeschlagen")
+            pn_create(
+                hass,
+                f"Scan fehlgeschlagen: {err}\n\nDetails im HA-Log (Einstellungen → System → Logs).",
+                title="⚠️ HACS Cleanup – Fehler",
+                notification_id=NOTIFICATION_ID_UNUSED_INTEGRATIONS,
+            )
+            return
+
+        pn_create(
+            hass,
+            result["notification"],
+            title="🧹 HACS Cleanup – Ungenutzte Integrationen",
+            notification_id=NOTIFICATION_ID_UNUSED_INTEGRATIONS,
+        )
+
+        if result["unused_count"] > 0:
+            _LOGGER.warning(
+                "HACS Cleanup: %d vermutlich ungenutzte Integration-Repos gefunden. Vollbericht: %s",
+                result["unused_count"],
+                report_path,
+            )
+        else:
+            _LOGGER.info("HACS Cleanup: Alle installierten Integrationen scheinen genutzt zu werden.")
+
     hass.services.async_register(DOMAIN, SERVICE_SCAN, handle_scan)
     hass.services.async_register(
         DOMAIN, SERVICE_SCAN_UNUSED_CARDS, handle_scan_unused_cards
     )
+    hass.services.async_register(
+        DOMAIN, SERVICE_SCAN_UNUSED_INTEGRATIONS, handle_scan_unused_integrations
+    )
     _LOGGER.debug(
-        "HACS Cleanup Services '%s.%s' und '%s.%s' registriert",
-        DOMAIN, SERVICE_SCAN, DOMAIN, SERVICE_SCAN_UNUSED_CARDS,
+        "HACS Cleanup Services '%s.%s', '%s.%s' und '%s.%s' registriert",
+        DOMAIN, SERVICE_SCAN,
+        DOMAIN, SERVICE_SCAN_UNUSED_CARDS,
+        DOMAIN, SERVICE_SCAN_UNUSED_INTEGRATIONS,
     )
     return True
 
@@ -121,4 +171,5 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Integration entladen."""
     hass.services.async_remove(DOMAIN, SERVICE_SCAN)
     hass.services.async_remove(DOMAIN, SERVICE_SCAN_UNUSED_CARDS)
+    hass.services.async_remove(DOMAIN, SERVICE_SCAN_UNUSED_INTEGRATIONS)
     return True

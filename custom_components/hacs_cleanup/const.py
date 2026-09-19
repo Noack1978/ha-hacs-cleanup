@@ -9,4 +9,8 @@ SERVICE_SCAN_UNUSED_CARDS = "scan_unused_cards"
 NOTIFICATION_ID_UNUSED_CARDS = "hacs_cleanup_unused_cards"
 REPORT_FILENAME_UNUSED_CARDS = "hacs_cleanup_unused_cards_report.txt"
 
+SERVICE_SCAN_UNUSED_INTEGRATIONS = "scan_unused_integrations"
+NOTIFICATION_ID_UNUSED_INTEGRATIONS = "hacs_cleanup_unused_integrations"
+REPORT_FILENAME_UNUSED_INTEGRATIONS = "hacs_cleanup_unused_integrations_report.txt"
+
 CONF_EXCLUDED_REPOS = "excluded_repos"

@@ -19,6 +19,7 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import CONF_EXCLUDED_REPOS, DOMAIN
+from .integration_scanner import get_installed_integration_repos
 from .usage_scanner import get_installed_plugin_repos
 
 
@@ -45,9 +46,9 @@ class HacsCleanupConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class HacsCleanupOptionsFlow(OptionsFlowWithReload):
-    """Options Flow: installierte Repos auswählen, die vom
-    Ungenutzte-Karten-Scan ausgeschlossen werden sollen (z.B. Hilfs-Repos
-    ohne eigene Karte wie card-mod)."""
+    """Options Flow: installierte Repos auswählen, die von den
+    Ungenutzt-Scans (Karten und Integrationen) ausgeschlossen werden sollen
+    (z.B. Hilfs-Repos ohne eigene Karte wie card-mod)."""
 
     async def async_step_init(
         self, user_input: dict | None = None
@@ -61,12 +62,20 @@ class HacsCleanupOptionsFlow(OptionsFlowWithReload):
         plugins = await self.hass.async_add_executor_job(
             get_installed_plugin_repos, storage_dir
         )
+        integrations = await self.hass.async_add_executor_job(
+            get_installed_integration_repos, storage_dir
+        )
 
         options = [
             SelectOptionDict(
-                value=p["id"], label=f"{p['name']} ({p['full_name']})"
+                value=p["id"], label=f"🧩 {p['name']} ({p['full_name']})"
             )
             for p in plugins
+        ] + [
+            SelectOptionDict(
+                value=p["id"], label=f"⚙️ {p['name']} ({p['full_name']})"
+            )
+            for p in integrations
         ]
 
         schema = vol.Schema(
