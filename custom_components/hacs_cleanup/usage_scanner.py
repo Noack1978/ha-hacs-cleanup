@@ -10,12 +10,15 @@ Primäre Erkennung: Die lokal installierte(n) JS-Datei(en) unter
 `customElements.define("name", ...)` durchsucht. Das ist der exakte Name,
 unter dem eine Karte im Dashboard als `custom:name` ansprechbar ist – jede
 gültige Lovelace-Karte muss sich so registrieren, sonst würde HA sie gar
-nicht laden. Zusätzlich wird das bei kompilierten Decorators (z.B. Lits
-@customElement("name")) übliche Muster erkannt, bei dem der Name nicht
-direkt im define()-Aufruf steht, sondern als String-Literal an eine
-umschließende Wrapper-Funktion übergeben wird – dies wird für jedes
-Vorkommen in der Datei geprüft, sodass auch Repos mit mehreren Karten in
-einer Bündel-Datei (z.B. lovelace-mushroom) korrekt erfasst werden.
+nicht laden. Zusätzlich werden zwei weitere, bei Multi-Karten-Bündeln
+übliche Registrierungsmuster erkannt: (1) kompilierte Decorator-Syntax
+(z.B. Lits @customElement("name")), bei der der Name als String-Literal an
+eine umschließende Wrapper-Funktion statt direkt an define() übergeben
+wird, und (2) eine Präfix-Variable mit Template-Literal-Suffixen (z.B.
+lovelace-mushroom: og="mushroom"; `${og}-chips-card`), bei der die
+einzelnen Kartennamen zur Laufzeit aus Repo-Präfix + Suffix zusammengesetzt
+werden. Beide werden für jedes Vorkommen in der Datei geprüft, nicht nur
+einmal, damit alle Karten eines Bündels erfasst werden.
 
 Fallback (nur falls die JS-Datei nicht gefunden/lesbar ist): Namens-Heuristik
 über Datei-/Repo-Namen. In diesem Fall ist ein Fund unsicherer und wird im
@@ -135,10 +138,22 @@ def _heuristic_candidates(repo: dict) -> set[str]:
     return {n for n in names if n}
 
 
-def _defined_elements(www_community_dir: Path, repo: dict) -> set[str]:
+def _defined_elements(
+    www_community_dir: Path, repo: dict, heuristic_words: set[str] | None = None
+) -> set[str]:
     """Liest die lokal installierte(n) JS-Datei(en) eines Plugin-Repos und
-    extrahiert die per customElements.define() registrierten Namen – die
-    exakte, verlässliche Quelle für den nutzbaren 'custom:<name>'-Typ."""
+    extrahiert die tatsächlich registrierten Custom-Element-Namen – die
+    exakte, verlässliche Quelle für den nutzbaren 'custom:<name>'-Typ.
+
+    Kombiniert drei Erkennungsmuster, da Repos JS-Bundler-abhängig
+    unterschiedlich kompilieren:
+    1. Direktes Literal in customElements.define("name", ...)
+    2. Kompiliertes Decorator-Pattern (Name als Literal an eine
+       umschließende Wrapper-Funktion statt direkt an define())
+    3. Präfix-Variable + Template-Literal-Suffixe (z.B. bei
+       lovelace-mushroom: og="mushroom"; ...; `${og}-chips-card`; ...),
+       üblich bei Multi-Karten-Bündeln, deren einzelne Kartennamen zur
+       Laufzeit aus Repo-Präfix + Suffix zusammengesetzt werden."""
     full_name = repo.get("full_name") or ""
     repo_short = full_name.split("/")[-1] if "/" in full_name else full_name
     if not repo_short:
@@ -165,6 +180,7 @@ def _defined_elements(www_community_dir: Path, repo: dict) -> set[str]:
             continue
         defined |= {m.lower() for m in DEFINE_RE.findall(content)}
         defined |= _decorator_defined_elements(content)
+        defined |= _prefix_variable_defined_elements(content, heuristic_words or set())
     return defined
 
 
@@ -176,16 +192,44 @@ def _decorator_defined_elements(content: str) -> set[str]:
     an eine umschließende Wrapper-Funktion.
 
     Wird für JEDES Vorkommen im Datei-Inhalt ausgewertet, nicht nur einmal –
-    wichtig für Repos mit mehreren Karten in einer Bündel-Datei (z.B.
-    lovelace-mushroom mit mushroom-entity-card, mushroom-title-card, ...),
-    deren Namen nicht zum Repo-Namen passen und die Namens-Heuristik daher
-    nicht erfassen kann."""
+    wichtig für Repos mit mehreren Karten in einer Bündel-Datei, deren Namen
+    nicht zum Repo-Namen passen und die Namens-Heuristik daher nicht
+    erfassen kann."""
     found: set[str] = set()
     for match in VARIABLE_DEFINE_RE.finditer(content):
         window = content[match.end() : match.end() + DECORATOR_SEARCH_WINDOW]
         arg_match = DECORATOR_ARG_RE.search(window)
         if arg_match:
             found.add(arg_match.group(1).lower())
+    return found
+
+
+def _prefix_variable_defined_elements(content: str, heuristic_words: set[str]) -> set[str]:
+    """Erkennt Kartennamen, die zur Laufzeit aus einer Präfix-Variable und
+    Template-Literal-Suffixen zusammengesetzt werden – ein bei
+    Multi-Karten-Bündeln übliches Muster, um den registrierten Namen nicht
+    für jede Karte auszuschreiben. Beispiel (lovelace-mushroom, minifiziert):
+
+        og="mushroom"; ...; `${og}-chips-card`; ...; `${og}-empty-card`; ...
+
+    heuristic_words liefert die vom Repo-/Dateinamen abgeleiteten Kandidaten
+    (z.B. "mushroom" für lovelace-mushroom); danach wird im Code nach einer
+    Variablen gesucht, der genau dieses Wort zugewiesen wird, und anschließend
+    nach allen Template-Literalen, die diese Variable als Präfix verwenden."""
+    found: set[str] = set()
+    for word in heuristic_words:
+        if not word or len(word) < 3:
+            continue
+        assign_re = re.compile(
+            r"([A-Za-z_$][\w$]*)\s*=\s*['\"`]" + re.escape(word) + r"['\"`]"
+        )
+        var_names = {m.group(1) for m in assign_re.finditer(content)}
+        for var_name in var_names:
+            suffix_re = re.compile(
+                r"\$\{\s*" + re.escape(var_name) + r"\s*\}-([a-z0-9]+(?:-[a-z0-9]+)*)"
+            )
+            for suffix_match in suffix_re.finditer(content):
+                found.add(f"{word}-{suffix_match.group(1)}".lower())
     return found
 
 
@@ -293,8 +337,8 @@ def run_scan_unused_cards(
     heuristic_based = 0
 
     for repo in plugins:
-        defined = _defined_elements(www_community_dir, repo)
         heuristic = _heuristic_candidates(repo)
+        defined = _defined_elements(www_community_dir, repo, heuristic)
         # Immer beide Quellen kombinieren: die JS-Analyse kann ein Hilfselement
         # (z.B. "action-handler-<name>") statt des Haupt-Kartennamens finden,
         # wenn dieser über eine JS-Variable statt eines String-Literals an
