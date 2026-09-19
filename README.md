@@ -31,13 +31,40 @@ gekennzeichnet – dort dann manuell verifizieren). Gescannt werden nur
 Storage-Modus-Dashboards (`.storage/lovelace*`) – reine YAML-Dashboards werden
 aktuell nicht erfasst.
 
+## Ungenutzte Integrationen finden (`hacs_cleanup.scan_unused_integrations`)
+
+Vergleicht alle installierten HACS-Integration-Repos (`custom_components`) mit den
+Integrationen, die tatsächlich in Home Assistant eingerichtet sind, und listet
+vermutlich ungenutzte Repos auf – als Grundlage, um sie in HACS zu deinstallieren.
+
+**Erkennung:** Zwei Signale werden geprüft:
+
+1. **Config Entry** – existiert ein Eintrag in `.storage/core.config_entries`
+   mit passender `domain`, gilt die Integration als genutzt.
+2. **YAML-Referenz** – zusätzlich werden alle `*.yaml`/`*.yml`-Dateien im
+   Konfigurationsordner (ohne `.storage`, `custom_components`, `www`,
+   `themes`, `blueprints`, `__pycache__`) nach einem Top-Level-Schlüssel
+   `<domain>:` oder einer Zeile `platform: <domain>` durchsucht – für
+   Integrationen, die rein per YAML eingebunden werden (z.B. Sensoren ohne
+   Config-Flow).
+
+Die Domain eines Repos wird primär aus den HACS-Metadaten (`hacs.repositories`)
+gelesen, ersatzweise über `custom_components/<name>/manifest.json` ermittelt
+(inkl. gängiger Namensvarianten wie `ha-`/`homeassistant-`-Präfixe).
+
+Kann die Domain für ein Repo nicht ermittelt werden, erscheint es im Bericht
+im eigenen Abschnitt **"Domain nicht ermittelbar"** zur manuellen Prüfung –
+es wird nicht automatisch als ungenutzt gewertet.
+
 **Repos ausschließen:** Manche installierten Repos sind keine eigene Karte
-(z.B. Hilfs-Repos wie `card-mod`), werden dadurch nie als "genutzt" erkannt
-und würden fälschlich als ungenutzt gelistet. Solche Repos lassen sich in
-der Integrationskonfiguration ausschließen: Einstellungen → Geräte &
-Dienste → **HACS Cleanup** → **Konfigurieren** → Repos per Mehrfachauswahl
-hinzufügen (wie bei einer Entitäten-Auswahl). Ausgeschlossene Repos werden
-beim Scan übersprungen und im Bericht im eigenen Abschnitt "Manuell
+bzw. keine eigenständig aktivierbare Integration (z.B. Hilfs-Repos wie
+`card-mod`), werden dadurch nie als "genutzt" erkannt und würden fälschlich
+als ungenutzt gelistet. Solche Repos lassen sich in der Integrationskonfiguration
+ausschließen: Einstellungen → Geräte & Dienste → **HACS Cleanup** →
+**Konfigurieren** → Repos per Mehrfachauswahl hinzufügen (wie bei einer
+Entitäten-Auswahl). Karten sind dort mit 🧩, Integrationen mit ⚙️ markiert.
+Ausgeschlossene Repos werden bei beiden Scans (Karten und Integrationen)
+übersprungen und im jeweiligen Bericht im eigenen Abschnitt "Manuell
 ausgeschlossen" aufgeführt.
 
 ## Installation
@@ -58,7 +85,7 @@ ausgeschlossen" aufgeführt.
 
 ### Service aufrufen
 
-Entwicklerwerkzeuge → Aktionen → `hacs_cleanup.scan` bzw. `hacs_cleanup.scan_unused_cards` → Aktion ausführen
+Entwicklerwerkzeuge → Aktionen → `hacs_cleanup.scan`, `hacs_cleanup.scan_unused_cards` bzw. `hacs_cleanup.scan_unused_integrations` → Aktion ausführen
 
 ### Dashboard-Buttons
 
@@ -88,11 +115,25 @@ tap_action:
 show_state: false
 ```
 
+```yaml
+show_name: true
+show_icon: true
+type: button
+name: HACS Cleanup – Ungenutzte Integrationen
+icon: mdi:puzzle-outline
+tap_action:
+  action: perform-action
+  perform_action: hacs_cleanup.scan_unused_integrations
+  target: {}
+show_state: false
+```
+
 ### Ergebnis
 
 - **HA-Benachrichtigung** mit Kurzübersicht erscheint direkt
 - **Vollbericht** von `hacs_cleanup.scan` unter `/config/hacs_cleanup_report.txt`
 - **Vollbericht** von `hacs_cleanup.scan_unused_cards` unter `/config/hacs_cleanup_unused_cards_report.txt`
+- **Vollbericht** von `hacs_cleanup.scan_unused_integrations` unter `/config/hacs_cleanup_unused_integrations_report.txt`
 
 ## Hinweis
 
