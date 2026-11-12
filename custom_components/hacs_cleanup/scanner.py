@@ -9,6 +9,8 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from .repo_store import MANAGER_DOMAINS, load_repositories
+
 
 def _load(path: Path) -> tuple[dict, list[str]]:
     """Lädt eine JSON-Datei und gibt (dict, zeilenliste) zurück."""
@@ -29,29 +31,28 @@ def _find_line(lines: list[str], *terms: str) -> int:
     return -1
 
 
-def _get_hacs_repo_ids(storage_dir: Path) -> tuple[set[str], str]:
+def _get_hacs_repo_ids(storage_dir: Path) -> tuple[set[str], str, str]:
     """
-    Liest alle bekannten Repo-IDs aus hacs.repositories.
+    Liest alle bekannten Repo-IDs aus der Repository-Datei von HACS
+    (hacs.repositories, bis HA 2026.10) bzw. dem Marketplace
+    (marketplace.repositories, ab HA 2026.11).
     Struktur: {"version":1, "data": {"REPO_ID": {...}, ...}}
-    Gibt (repo_id_set, status_text) zurück.
+    Gibt (repo_id_set, status_text, dateiname) zurück.
     """
-    path = storage_dir / "hacs.repositories"
-    data, _ = _load(path)
-    if not data:
-        return set(), f"WARNUNG: {path.name} nicht gefunden"
-
-    repos = data.get("data", {})
-    if not isinstance(repos, dict) or not repos:
-        return set(), f"WARNUNG: Unerwartete Struktur in {path.name}"
+    repos, source = load_repositories(storage_dir)
+    if not repos:
+        return set(), source, "der Repository-Datei"
 
     ids = {str(k) for k in repos.keys()}
-    return ids, f"{path.name}: {len(ids)} Repos bekannt"
+    return ids, f"{source}: {len(ids)} Repos bekannt", source
 
 
 def _get_hacs_entry_id(config_entries: list) -> str:
-    for e in config_entries:
-        if e.get("domain") == "hacs":
-            return e.get("entry_id", "")
+    """Config-Entry-ID von HACS ("hacs") bzw. dem Marketplace ("marketplace")."""
+    for domain in MANAGER_DOMAINS:
+        for e in config_entries:
+            if e.get("domain") == domain:
+                return e.get("entry_id", "")
     return ""
 
 
@@ -87,7 +88,7 @@ def run_scan(storage_dir_str: str, report_path_str: str) -> dict:
     config_entries = entries_data.get("data", {}).get("entries",  [])
 
     valid_entry_ids = {e.get("entry_id") for e in config_entries} - {None}
-    hacs_repo_ids, hacs_status = _get_hacs_repo_ids(storage_dir)
+    hacs_repo_ids, hacs_status, repo_file = _get_hacs_repo_ids(storage_dir)
     hacs_entry_id = _get_hacs_entry_id(config_entries)
 
     lines_out = []
@@ -101,7 +102,7 @@ def run_scan(storage_dir_str: str, report_path_str: str) -> dict:
     w(f"Geräte gesamt     : {len(devices)}")
     w(f"Config-Einträge   : {len(config_entries)}")
     w(f"HACS Repos bekannt: {len(hacs_repo_ids)}  ({hacs_status})")
-    w(f"HACS Entry-ID     : {hacs_entry_id or 'nicht gefunden'}")
+    w(f"HACS/Marketplace Entry-ID: {hacs_entry_id or 'nicht gefunden'}")
     w()
 
     findings = 0
@@ -163,27 +164,31 @@ def run_scan(storage_dir_str: str, report_path_str: str) -> dict:
 
     # ── 3. Verwaiste HACS-Geräte ───────────────────────────────────────────────
     orphaned_hacs_devices: list[tuple] = []
-    if hacs_entry_id and hacs_repo_ids:
+    orphaned_device_ids = {d.get("id") for d in orphaned_devices}
+    if hacs_repo_ids:
         for d in devices:
             if d.get("parent_device_id"):
                 continue  # Child Device – wird über Parent verwaltet
-            if hacs_entry_id not in _device_entry_ids(d):
+            if d.get("id") in orphaned_device_ids:
+                continue  # bereits in Abschnitt 2 erfasst
+            # Ist der Config Entry bekannt, nur dessen Geräte prüfen. Ohne
+            # Config Entry (z.B. falls der Marketplace keinen anlegt) greift
+            # allein der Geräte-Identifier.
+            if hacs_entry_id and hacs_entry_id not in _device_entry_ids(d):
                 continue
             for ident in d.get("identifiers", []):
-                if (isinstance(ident, list) and len(ident) == 2
-                        and ident[0] == "hacs"
+                if (isinstance(ident, (list, tuple)) and len(ident) == 2
+                        and ident[0] in MANAGER_DOMAINS
                         and str(ident[1]).isdigit()
                         and str(ident[1]) not in hacs_repo_ids):
                     orphaned_hacs_devices.append((d, str(ident[1])))
                     break
     findings += len(orphaned_hacs_devices)
 
-    w(f"--- 3. Verwaiste HACS-Geräte (Repo nicht mehr in hacs.repositories): "
+    w(f"--- 3. Verwaiste HACS-Geräte (Repo nicht mehr in {repo_file}): "
       f"{len(orphaned_hacs_devices)} ---")
-    if not hacs_entry_id:
-        w("  HINWEIS: HACS Entry-ID nicht gefunden – Abschnitt übersprungen")
-    elif not hacs_repo_ids:
-        w("  HINWEIS: hacs.repositories nicht lesbar – Abschnitt übersprungen")
+    if not hacs_repo_ids:
+        w("  HINWEIS: Repository-Datei nicht lesbar – Abschnitt übersprungen")
     elif orphaned_hacs_devices:
         for d, repo_id in orphaned_hacs_devices:
             dev_id  = d.get("id", "?")
@@ -193,7 +198,7 @@ def run_scan(storage_dir_str: str, report_path_str: str) -> dict:
             w(f"  Datei  : {DEVICE_FILE}")
             w(f"  Zeile  : {line_no if line_no > 0 else 'nicht ermittelbar'}")
             w(f"  Eintrag: {name}  [manufacturer={mfr}, repo_id={repo_id}]")
-            w(f"  Grund  : Repo-ID {repo_id} nicht mehr in hacs.repositories")
+            w(f"  Grund  : Repo-ID {repo_id} nicht mehr in {repo_file}")
             w(f"  Aktion : Zeile aus {DEVICE_FILE.name} löschen + HA neu starten")
             w()
     else:
@@ -204,25 +209,25 @@ def run_scan(storage_dir_str: str, report_path_str: str) -> dict:
     orphaned_hacs_entities: list[tuple] = []
     if hacs_repo_ids:
         for e in entities:
-            if e.get("platform") != "hacs":
+            if e.get("platform") not in MANAGER_DOMAINS:
                 continue
             uid = str(e.get("unique_id", ""))
             if uid and uid.isdigit() and uid not in hacs_repo_ids:
                 orphaned_hacs_entities.append((e, uid))
     findings += len(orphaned_hacs_entities)
 
-    w(f"--- 4. Verwaiste HACS-Entitäten (Repo nicht mehr in hacs.repositories): "
+    w(f"--- 4. Verwaiste HACS-Entitäten (Repo nicht mehr in {repo_file}): "
       f"{len(orphaned_hacs_entities)} ---")
     if not hacs_repo_ids:
-        w("  HINWEIS: hacs.repositories nicht lesbar – Abschnitt übersprungen")
+        w("  HINWEIS: Repository-Datei nicht lesbar – Abschnitt übersprungen")
     elif orphaned_hacs_entities:
         for e, uid in orphaned_hacs_entities:
             eid     = e.get("entity_id", "?")
             line_no = _find_line(entity_lines, f'"entity_id": "{eid}"')
             w(f"  Datei  : {ENTITY_FILE}")
             w(f"  Zeile  : {line_no if line_no > 0 else 'nicht ermittelbar'}")
-            w(f"  Eintrag: {eid}  [platform=hacs, unique_id={uid}]")
-            w(f"  Grund  : Repo-ID {uid} nicht mehr in hacs.repositories")
+            w(f"  Eintrag: {eid}  [platform={e.get('platform')}, unique_id={uid}]")
+            w(f"  Grund  : Repo-ID {uid} nicht mehr in {repo_file}")
             w(f"  Aktion : Zeile aus {ENTITY_FILE.name} löschen + HA neu starten")
             w()
     else:

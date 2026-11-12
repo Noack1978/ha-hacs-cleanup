@@ -1,8 +1,8 @@
 """
 Scan-Logik für ungenutzte HACS Plugin-Repos (Lovelace Custom Cards).
 
-Vergleicht die in hacs.repositories installierten Plugin-Repos (Kategorie
-"plugin") mit den tatsächlich in den Lovelace-Dashboards (Storage-Modus)
+Vergleicht die in der HACS-/Marketplace-Repository-Datei (siehe repo_store.py)
+installierten Plugin-Repos (Kategorie "plugin") mit den tatsächlich in den Lovelace-Dashboards (Storage-Modus)
 verwendeten `custom:`-Kartentypen.
 
 Primäre Erkennung: Die lokal installierte(n) JS-Datei(en) unter
@@ -32,6 +32,8 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+from .repo_store import PLUGIN_CATEGORIES, category_of, is_installed, load_repositories
+
 CUSTOM_PREFIX = "custom:"
 DEFINE_RE = re.compile(r"customElements\.define\(\s*['\"`]([a-zA-Z0-9_-]+)['\"`]")
 
@@ -56,37 +58,23 @@ def _load(path: Path) -> dict:
         return {}
 
 
-def _is_installed(repo: dict) -> bool:
-    """Prüft, ob ein Repo tatsächlich installiert ist (nicht nur im Katalog bekannt)."""
-    if repo.get("installed") is True:
-        return True
-    # Ältere/alternative HACS-Schemata verwenden andere Feldnamen
-    if repo.get("installed_version") or repo.get("version_installed"):
-        return True
-    return False
-
-
 def _get_plugin_repos(storage_dir: Path) -> tuple[list[dict], str]:
-    """Liest alle INSTALLIERTEN Plugin-Repos (Lovelace Custom Cards) aus hacs.repositories.
+    """Liest alle INSTALLIERTEN Plugin-Repos (Lovelace Custom Cards).
 
-    hacs.repositories enthält bei aktuellem HACS den kompletten bekannten Katalog
-    (mehrere tausend Einträge), nicht nur installierte Repos. Für den Vergleich
-    "installiert vs. genutzt" muss daher zusätzlich auf "installed" gefiltert werden.
+    Die Repository-Datei (hacs.repositories bis HA 2026.10, marketplace.repositories
+    ab HA 2026.11) enthält den kompletten bekannten Katalog (mehrere tausend
+    Einträge), nicht nur installierte Repos. Für den Vergleich "installiert vs.
+    genutzt" muss daher zusätzlich auf "installed" gefiltert werden.
     """
-    path = storage_dir / "hacs.repositories"
-    data = _load(path)
-    if not data:
-        return [], f"WARNUNG: {path.name} nicht gefunden"
-
-    repos = data.get("data", {})
-    if not isinstance(repos, dict) or not repos:
-        return [], f"WARNUNG: Unerwartete Struktur in {path.name}"
+    repos, source = load_repositories(storage_dir)
+    if not repos:
+        return [], source
 
     plugins = []
     for repo_id, repo in repos.items():
-        if not isinstance(repo, dict) or repo.get("category") != "plugin":
+        if category_of(repo) not in PLUGIN_CATEGORIES:
             continue
-        if not _is_installed(repo):
+        if not is_installed(repo):
             continue
         plugins.append(
             {
@@ -96,7 +84,7 @@ def _get_plugin_repos(storage_dir: Path) -> tuple[list[dict], str]:
                 "file_name": repo.get("file_name"),
             }
         )
-    return plugins, f"{path.name}: {len(repos)} Repos im Katalog, {len(plugins)} davon installiert (Kategorie plugin)"
+    return plugins, f"{source}: {len(repos)} Repos im Katalog, {len(plugins)} davon installiert (Kategorie plugin)"
 
 
 def get_installed_plugin_repos(storage_dir_str: str) -> list[dict]:

@@ -2,6 +2,8 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 
+[![Open your Home Assistant instance and open this repository in HACS / the Marketplace.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Noack1978&repository=ha-hacs-cleanup&category=integration)
+
 Scannt Home Assistant nach verwaisten Einträgen, die nach dem Entfernen von HACS-Repositories zurückbleiben.
 
 ## Verwaiste Einträge finden (`hacs_cleanup.scan`)
@@ -14,8 +16,8 @@ erstellt einen Bericht.
 |-----------|-----------------|
 | 1 | Entitäten deren `config_entry_id` nicht mehr existiert |
 | 2 | Geräte deren `config_entry_id` nicht mehr existiert |
-| 3 | HACS-Geräte deren Repo nicht mehr in `hacs.repositories` steht |
-| 4 | HACS-Entitäten deren Repo nicht mehr in `hacs.repositories` steht |
+| 3 | HACS-/Marketplace-Geräte deren Repo nicht mehr in der Repository-Datei steht |
+| 4 | HACS-/Marketplace-Entitäten deren Repo nicht mehr in der Repository-Datei steht |
 
 Für jeden Fund wird die genaue **Datei** und **Zeilennummer** im Vollbericht angegeben.
 
@@ -52,7 +54,7 @@ vermutlich ungenutzte Repos auf – als Grundlage, um sie in HACS zu deinstallie
    Integrationen, die rein per YAML eingebunden werden (z.B. Sensoren ohne
    Config-Flow).
 
-Die Domain eines Repos wird primär aus den HACS-Metadaten (`hacs.repositories`)
+Die Domain eines Repos wird primär aus den HACS-/Marketplace-Metadaten (Repository-Datei)
 gelesen, ersatzweise über `custom_components/<name>/manifest.json` ermittelt
 (inkl. gängiger Namensvarianten wie `ha-`/`homeassistant-`-Präfixe).
 
@@ -71,11 +73,26 @@ Ausgeschlossene Repos werden bei beiden Scans (Karten und Integrationen)
 übersprungen und im jeweiligen Bericht im eigenen Abschnitt "Manuell
 ausgeschlossen" aufgeführt.
 
+## Kompatibilität mit HACS und dem Marketplace (HA 2026.11)
+
+Mit Home Assistant 2026.11 wurde HACS in den **Marketplace** überführt. Die
+Integration funktioniert **vor und nach** diesem Update ohne Konfiguration:
+
+| | bis HA 2026.10 (HACS) | ab HA 2026.11 (Marketplace) |
+|---|---|---|
+| Repository-Datei | `.storage/hacs.repositories` | `.storage/marketplace.repositories` |
+| Domain (Config Entry, Geräte, Entitäten) | `hacs` | `marketplace` |
+| Karten / Integrationen | `www/community/`, `custom_components/` | unverändert |
+
+Liegen mehrere Repository-Dateien vor (z.B. direkt nach der Migration), wird
+die zuletzt geänderte verwendet. Der Vollbericht nennt die tatsächlich gelesene
+Datei.
+
 ## Installation
 
-### Via HACS (empfohlen)
+### Via HACS bzw. Marketplace (empfohlen)
 
-1. HACS öffnen → Integrationen → drei Punkte → **Custom Repositories**
+1. HACS (bis HA 2026.10) bzw. Marketplace (ab HA 2026.11) öffnen → Integrationen → drei Punkte → **Custom Repositories**
 2. URL `https://github.com/Noack1978/ha-hacs-cleanup` hinzufügen, Kategorie: **Integration**
 3. **HACS Cleanup** installieren
 4. HA neu starten

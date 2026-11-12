@@ -13,8 +13,8 @@ genutzt, wenn ihre Domain entweder
    Deckt die wenigen Integrationen ab, die ausschließlich per YAML und ohne
    Config Entry funktionieren.
 
-Die Domain eines Repos wird primär aus hacs.repositories ("domain"-Feld)
-gelesen; falls dort nicht vorhanden, wird ersatzweise der aus full_name
+Die Domain eines Repos wird primär aus der HACS-/Marketplace-Repository-Datei
+(siehe repo_store.py, "domain"-Feld) gelesen; falls dort nicht vorhanden, wird ersatzweise der aus full_name
 abgeleitete Ordnername unter custom_components/ geprüft.
 """
 
@@ -24,6 +24,8 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
+
+from .repo_store import INTEGRATION_CATEGORIES, category_of, is_installed, load_repositories
 
 # Top-Level-YAML-Schlüssel einer Domain, z.B. "waste_collection_schedule:"
 # am Zeilenanfang (kein Einrückung), gefolgt von ':' und optional einem Kommentar.
@@ -47,18 +49,9 @@ def _load(path: Path) -> dict:
         return {}
 
 
-def _is_installed(repo: dict) -> bool:
-    """Prüft, ob ein Repo tatsächlich installiert ist (nicht nur im Katalog bekannt)."""
-    if repo.get("installed") is True:
-        return True
-    if repo.get("installed_version") or repo.get("version_installed"):
-        return True
-    return False
-
-
 def _resolve_domain(repo: dict, custom_components_dir: Path) -> str | None:
     """Ermittelt die Domain (=Ordnername unter custom_components/) eines
-    Integration-Repos. Primär aus hacs.repositories, ersatzweise über den
+    Integration-Repos. Primär aus der Repository-Datei, ersatzweise über den
     aus full_name abgeleiteten Ordnernamen."""
     domain = repo.get("domain")
     if domain:
@@ -83,27 +76,23 @@ def _resolve_domain(repo: dict, custom_components_dir: Path) -> str | None:
 
 
 def _get_integration_repos(storage_dir: Path) -> tuple[list[dict], str]:
-    """Liest alle INSTALLIERTEN Integration-Repos aus hacs.repositories.
+    """Liest alle INSTALLIERTEN Integration-Repos.
 
-    hacs.repositories enthält den kompletten HACS-Katalog, nicht nur
-    installierte Repos – daher zusätzlich Filterung auf "installed".
+    Die Repository-Datei (hacs.repositories bis HA 2026.10,
+    marketplace.repositories ab HA 2026.11) enthält den kompletten Katalog,
+    nicht nur installierte Repos – daher zusätzlich Filterung auf "installed".
     """
-    path = storage_dir / "hacs.repositories"
-    data = _load(path)
-    if not data:
-        return [], f"WARNUNG: {path.name} nicht gefunden"
-
-    repos = data.get("data", {})
-    if not isinstance(repos, dict) or not repos:
-        return [], f"WARNUNG: Unerwartete Struktur in {path.name}"
+    repos, source = load_repositories(storage_dir)
+    if not repos:
+        return [], source
 
     custom_components_dir = storage_dir.parent / "custom_components"
 
     integrations = []
     for repo_id, repo in repos.items():
-        if not isinstance(repo, dict) or repo.get("category") != "integration":
+        if category_of(repo) not in INTEGRATION_CATEGORIES:
             continue
-        if not _is_installed(repo):
+        if not is_installed(repo):
             continue
         domain = _resolve_domain(repo, custom_components_dir)
         integrations.append(
@@ -115,7 +104,7 @@ def _get_integration_repos(storage_dir: Path) -> tuple[list[dict], str]:
             }
         )
     return integrations, (
-        f"{path.name}: {len(repos)} Repos im Katalog, {len(integrations)} davon "
+        f"{source}: {len(repos)} Repos im Katalog, {len(integrations)} davon "
         f"installiert (Kategorie integration)"
     )
 
@@ -275,7 +264,8 @@ def run_scan_unused_integrations(
     if unresolved:
         w(f"--- Domain nicht ermittelbar ({len(unresolved)}) ---")
         w("Für diese Repos konnte keine Domain bestimmt werden (weder aus")
-        w("hacs.repositories noch über einen passenden custom_components-Ordner).")
+        w("der HACS-/Marketplace-Repository-Datei noch über einen passenden")
+        w("custom_components-Ordner).")
         w("Manuell prüfen, ob die Integration genutzt wird.")
         for r in unresolved:
             w(f"  {r['name']}  [{r['full_name']}]  repo_id={r['id']}")
